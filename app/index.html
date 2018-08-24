@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Ð-lending Login</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css">
+  <link rel='stylesheet prefetch' href='https://fonts.googleapis.com/css?family=Roboto:400,100,300,500,700,900'>
+  <link rel='stylesheet prefetch' href='https://fonts.googleapis.com/css?family=Montserrat:400,700'>
+  <link rel='stylesheet prefetch' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css'>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+    crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+    crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+    crossorigin="anonymous"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+    crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="./app/stylesheets/style.css">
+  <link rel="shortcut icon" href="http://res.cloudinary.com/yudiz/image/upload/v1525855215/kisspng-indian-rupee-sign-currency-symbol-computer-icons-5ae2fe7dab0960.1449292315248257257006.png" type="image/x-icon" />
+  <script src="./app/javascripts/index.js"></script>
+<script src="./app/javascripts/particles.js">
+ </script>
+<script>
+  particlesJS.load('particles-js', './app/javascripts/particles.json', function () {});
+</script>
+</head>
+<div id="particles-js"></div>
+<body style="background-image: url(./app/images/Website.png);" >
+
+  <div class="container" style="margin-top: -700px;"></div>
+  </div>
+  <div class="form">
+    <img style="height: 290px;margin-bottom: -120px;margin-top: -50px;" src="./app/images/black.png" />
+    <br>
+    <br>
+    <br>
+    <form class="register-form">
+      <p id="regTypeText">Register as</p>
+      <input type="text" placeholder="UserName" id="name" />
+      <input type="text" placeholder="Email" id="email" />
+      <input type="password" placeholder="Password"  id="password"/>
+      <input id="regTypeData" type="hidden" value="" />
+      <button id="log">Sign Up</button>
+      <p class="message change">Already registered?
+        <a href="#">Sign In</a>
+      </p>
+    </form>
+    <form class="login-form">
+      <input type="text" placeholder="UserName" id="uid" />
+      <input type="password" placeholder="Password" id="pwd"/>
+      <button id="sign">Login</button>
+      <p class="message">Not registered? </p>
+      <!-- Example single danger button -->
+      <div class="btn-group">
+  
+        <a data-toggle="dropdown" style="color: #EF3B3A; font-size: 12px;cursor: pointer;" aria-haspopup="true" aria-expanded="false">
+          Create an account
+        </a>
+        <div class="dropdown-menu">
+          <a id="lender" class="dropdown-item change" href="#">As Lender</a>
+          <div class="dropdown-divider"></div>
+          <a id="borrower" class="dropdown-item change" href="#">As Borrower</a>
+        </div>
+      </div>
+  
+    </form>
+  </div>
+  </div>
+
+
+</body>
+<script src='http://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js'></script>
+<script src="./app/javascripts/index.js"></script>
+<script>
+/*
+$('#sign').click(function(){
+  window.location.href = "./app/borrower.html";
+});
+*/
+ $('#sign').click(function() { 
+   var value1 = document.getElementById('uid').value;
+   console.log(value1);
+   if(value1 == "borrower"){
+      console.log("entered");     
+      window.location.href = './borrower.html';
+        return false;
+   }   
+ else if(value1 == "lender"){
+     window.location.href = './lender.html';
+     return false;
+   }
+   else{
+     alert("Invalid Username or Password!");
+   }
+   });
+</script>
+</html>
