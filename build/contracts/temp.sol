@@ -1,242 +1,132 @@
-pragma solidity ^0.4.4;
-contract CrowdBank {
-    
-    address public owner;
-    
-    enum ProposalState {
-        WAITING,
-        ACCEPTED,
-        REPAID
+pragma solidity ^0.4.6;
+
+contract token {
+	function transferFrom(address sender, address receiver, uint amount) returns(bool success){}
+	function burn() {}
+}
+
+contract SafeMath {
+  //internals
+
+  function safeMul(uint a, uint b) internal returns (uint) {
+    uint c = a * b;
+    assert(a == 0 || c / a == b);
+    return c;
+  }
+
+  function safeSub(uint a, uint b) internal returns (uint) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  function safeAdd(uint a, uint b) internal returns (uint) {
+    uint c = a + b;
+    assert(c>=a && c>=b);
+    return c;
+  }
+
+  function assert(bool assertion) internal {
+    if (!assertion) throw;
+  }
+}
+
+
+contract Crowdsale is SafeMath {
+    /* tokens will be transfered from this address */
+	address public beneficiary = 0x003230bbe64eccd66f62913679c8966cf9f41166;
+	/* if the funding goal is not reached, investors may withdraw their funds */
+	uint public fundingGoal = 50000000;
+	/* the maximum amount of tokens to be sold */
+	uint public maxGoal = 440000000;
+	/* how much has been raised by crowdale (in ETH) */
+	uint public amountRaised;
+	/* the start date of the crowdsale */
+	uint public start = 1488294000;
+	/* the number of tokens already sold */
+	uint public tokensSold;
+	/* there are different prices in different time intervals */
+	uint[4] public deadlines = [1488297600, 1488902400, 1489507200,1490112000];
+	uint[4] public prices = [833333333333333, 909090909090909,952380952380952, 1000000000000000];
+	/* the address of the token contract */
+	token public tokenReward;
+	/* the balances (in ETH) of all investors */
+	mapping(address => uint256) public balanceOf;
+	/* indicated if the funding goal has been reached. */
+	bool fundingGoalReached = false;
+	/* indicates if the crowdsale has been closed already */
+	bool crowdsaleClosed = false;
+	/* the multisignature wallet on which the funds will be stored */
+	address msWallet = 0x91efffb9c6cd3a66474688d0a48aa6ecfe515aa5;
+	/* notifying transfers and the success of the crowdsale*/
+	event GoalReached(address beneficiary, uint amountRaised);
+	event FundTransfer(address backer, uint amount, bool isContribution, uint amountRaised);
+
+
+
+    /*  initialization, set the token address */
+    function Crowdsale( ) {
+        tokenReward = token(0x08711d3b02c8758f2fb3ab4e80228418a7f8e39c);
     }
 
-    struct Proposal {
-        address lender;
-        uint loanId;
-        ProposalState state;
-        uint rate;
-        uint amount;
-    }
-    
-    enum LoanState {
-        ACCEPTING,
-        LOCKED,
-        SUCCESSFUL,
-        FAILED
-    }
-    
-    struct Loan {
-        address borrower;
-        LoanState state;
-        uint dueDate;
-        uint amount;
-        uint proposalCount;
-        uint collected;
-        uint startDate;
-        bytes32 mortgage;
-        mapping (uint=>uint) proposal;
+    /* invest by sending ether to the contract. */
+    function () payable{
+		if(msg.sender != msWallet) //do not trigger investment if the multisig wallet is returning the funds
+        	invest(msg.sender);
     }
 
-    Loan[] public loanList;
-    Proposal[] public proposalList;
-
-    mapping (address=>uint[]) public loanMap;
-    mapping (address=>uint[]) public lendMap;
-
-    function CrowdBank() {
-        owner = msg.sender;
+    /* make an investment
+    *  only callable if the crowdsale started and hasn't been closed already and the maxGoal wasn't reached yet.
+    *  the current token price is looked up and the corresponding number of tokens is transfered to the receiver.
+    *  the sent value is directly forwarded to a safe multisig wallet.
+    *  this method allows to purchase tokens in behalf of another address.*/
+    function invest(address receiver) payable{
+    	uint amount = msg.value;
+    	uint price = getPrice();
+    	if(price > amount) throw;
+		uint numTokens = amount / price;
+		if (crowdsaleClosed||now<start||safeAdd(tokensSold,numTokens)>maxGoal) throw;
+		if(!msWallet.send(amount)) throw;
+		balanceOf[receiver] = safeAdd(balanceOf[receiver],amount);
+		amountRaised = safeAdd(amountRaised, amount);
+		tokensSold+=numTokens;
+		if(!tokenReward.transferFrom(beneficiary, receiver, numTokens)) throw;
+        FundTransfer(receiver, amount, true, amountRaised);
     }
 
-    function hasActiveLoan(address borrower) constant returns(bool) {
-        uint validLoans = loanMap[borrower].length;
-        if(validLoans == 0) return false;
-        Loan obj = loanList[loanMap[borrower][validLoans-1]];
-        if(loanList[validLoans-1].state == LoanState.ACCEPTING) return true;
-        if(loanList[validLoans-1].state == LoanState.LOCKED) return true;
-        return false;
-    }
-    
-    function newLoan(uint amount, uint dueDate, bytes32 mortgage) {
-        if(hasActiveLoan(msg.sender)) return;
-        uint currentDate = block.timestamp;
-        loanList.push(Loan(msg.sender, LoanState.ACCEPTING, dueDate, amount, 0, 0, currentDate, mortgage));
-        loanMap[msg.sender].push(loanList.length-1);
+    /* looks up the current token price */
+    function getPrice() constant returns (uint256 price){
+        for(var i = 0; i < deadlines.length; i++)
+            if(now<deadlines[i])
+                return prices[i];
+        return prices[prices.length-1];//should never be returned, but to be sure to not divide by 0
     }
 
-    function newProposal(uint loanId, uint rate) payable {
-        if(loanList[loanId].borrower == 0 || loanList[loanId].state != LoanState.ACCEPTING)
-            return;
-        proposalList.push(Proposal(msg.sender, loanId, ProposalState.WAITING, rate, msg.value));
-        lendMap[msg.sender].push(proposalList.length-1);
-        loanList[loanId].proposalCount++;
-        loanList[loanId].proposal[loanList[loanId].proposalCount-1] = proposalList.length-1;
-    }
+    modifier afterDeadline() { if (now >= deadlines[deadlines.length-1]) _; }
 
-    function getActiveLoanId(address borrower) constant returns(uint) {
-        uint numLoans = loanMap[borrower].length;
-        if(numLoans == 0) return (2**64 - 1);
-        uint lastLoanId = loanMap[borrower][numLoans-1];
-        if(loanList[lastLoanId].state != LoanState.ACCEPTING) return (2**64 - 1);
-        return lastLoanId;
-    }
-
-    function revokeMyProposal(uint id) {        
-        uint proposeId = lendMap[msg.sender][id];
-        if(proposalList[proposeId].state != ProposalState.WAITING) return;
-        uint loanId = proposalList[proposeId].loanId;
-        if(loanList[loanId].state == LoanState.ACCEPTING) {
-            // Lender wishes to revoke his ETH when proposal is still WAITING
-            proposalList[proposeId].state = ProposalState.REPAID;
-            msg.sender.transfer(proposalList[proposeId].amount);
+    /* checks if the goal or time limit has been reached and ends the campaign */
+    function checkGoalReached() afterDeadline {
+        if (tokensSold >= fundingGoal){
+            fundingGoalReached = true;
+            tokenReward.burn(); //burn remaining tokens but 60 000 000
+            GoalReached(beneficiary, amountRaised);
         }
-        else if(loanList[loanId].state == LoanState.LOCKED) {
-            // The loan is locked/accepting and the due date passed : transfer the mortgage
-            if(loanList[loanId].dueDate < now) return;
-            loanList[loanId].state = LoanState.FAILED;
-            for(uint i = 0; i < loanList[loanId].proposalCount; i++) {
-                uint numI = loanList[loanId].proposal[i];
-                if(proposalList[numI].state == ProposalState.ACCEPTED) {
-                    // transfer mortgage 
-                }
-            } 
-        }
+        crowdsaleClosed = true;
     }
 
-    function lockLoan(uint loanId) {
-        //contract will send money to msg.sender
-        //states of proposals would be finalized, not accepted proposals would be reimbursed
-        if(loanList[loanId].state == LoanState.ACCEPTING)
-        {
-          loanList[loanId].state = LoanState.LOCKED;
-          for(uint i = 0; i < loanList[loanId].proposalCount; i++)
-          {
-            uint numI = loanList[loanId].proposal[i];
-            if(proposalList[numI].state == ProposalState.ACCEPTED)
-            {
-              msg.sender.transfer(proposalList[numI].amount); //Send to borrower
-            }
-            else
-            {
-              proposalList[numI].state = ProposalState.REPAID;
-              proposalList[numI].lender.transfer(proposalList[numI].amount); //Send back to lender
-            }
-          }
-        }
-        else
-          return;
-    }
-    
-    //Amount to be Repaid
-    function getRepayValue(uint loanId) constant returns(uint) {
-        if(loanList[loanId].state == LoanState.LOCKED)
-        {
-          uint time = loanList[loanId].startDate;
-          uint finalamount = 0;
-          for(uint i = 0; i < loanList[loanId].proposalCount; i++)
-          {
-            uint numI = loanList[loanId].proposal[i];
-            if(proposalList[numI].state == ProposalState.ACCEPTED)
-            {
-              uint original = proposalList[numI].amount;
-              uint rate = proposalList[numI].rate;
-              uint now = block.timestamp;
-              uint interest = (original*rate*(now - time))/(365*24*60*60*100);
-              finalamount += interest;
-              finalamount += original;
-            }
-          }
-          return finalamount;
-        }
-        else
-          return (2**64 -1);
+    /* allows the funders to withdraw their funds if the goal has not been reached.
+	*  only works after funds have been returned from the multisig wallet. */
+	function safeWithdrawal() afterDeadline {
+		uint amount = balanceOf[msg.sender];
+		if(address(this).balance >= amount){
+			balanceOf[msg.sender] = 0;
+			if (amount > 0) {
+				if (msg.sender.send(amount)) {
+					FundTransfer(msg.sender, amount, false, amountRaised);
+				} else {
+					balanceOf[msg.sender] = amount;
+				}
+			}
+		}
     }
 
-    function repayLoan(uint loanId) payable {
-      uint now = block.timestamp;
-      uint toBePaid = getRepayValue(loanId);
-      uint time = loanList[loanId].startDate;
-      uint paid = msg.value;
-      if(paid >= toBePaid)
-      {
-        uint remain = paid - toBePaid;
-        loanList[loanId].state = LoanState.SUCCESSFUL;
-        for(uint i = 0; i < loanList[loanId].proposalCount; i++)
-        {
-          uint numI = loanList[loanId].proposal[i];
-          if(proposalList[numI].state == ProposalState.ACCEPTED)
-          {
-            uint original = proposalList[numI].amount;
-            uint rate = proposalList[numI].rate;
-            uint interest = (original*rate*(now - time))/(365*24*60*60*100);
-            uint finalamount = interest + original;
-            proposalList[numI].lender.transfer(finalamount);
-            proposalList[numI].state = ProposalState.REPAID;
-          }
-        }
-        msg.sender.transfer(remain);
-      }
-      else
-      {
-        msg.sender.transfer(paid);
-      }
-    }
-    
-    function acceptProposal(uint proposeId)
-    {
-        uint loanId = getActiveLoanId(msg.sender); 
-        if(loanId == (2**64 - 1)) return;
-        Proposal pObj = proposalList[proposeId];
-        if(pObj.state != ProposalState.WAITING) return;
-
-        Loan lObj = loanList[loanId];
-        if(lObj.state != LoanState.ACCEPTING) return;
-
-        if(lObj.collected + pObj.amount <= lObj.amount)
-        {
-          loanList[loanId].collected += pObj.amount;
-          proposalList[proposeId].state = ProposalState.ACCEPTED;
-        }
-    }
-
-    function totalProposalsBy(address lender) constant returns(uint) {
-        return lendMap[lender].length;
-    }
-
-    function getProposalAtPosFor(address lender, uint pos) constant returns(address, uint, ProposalState, uint, uint, uint, uint, bytes32) {
-        Proposal prop = proposalList[lendMap[lender][pos]];
-        return (prop.lender, prop.loanId, prop.state, prop.rate, prop.amount, loanList[prop.loanId].amount, loanList[prop.loanId].dueDate, loanList[prop.loanId].mortgage);
-    }
-
-// BORROWER ACTIONS AVAILABLE    
-
-    function totalLoansBy(address borrower) constant returns(uint) {
-        return loanMap[borrower].length;
-    }
-
-    function getLoanDetailsByAddressPosition(address borrower, uint pos) constant returns(LoanState, uint, uint, uint, uint,bytes32) {
-        Loan obj = loanList[loanMap[borrower][pos]];
-        return (obj.state, obj.dueDate, obj.amount, obj.collected, loanMap[borrower][pos], obj.mortgage);
-    }
-
-    function getLastLoanState(address borrower) constant returns(LoanState) {
-        uint loanLength = loanMap[borrower].length;
-        if(loanLength == 0)
-            return LoanState.SUCCESSFUL;
-        return loanList[loanMap[borrower][loanLength -1]].state;
-    }
-
-    function getLastLoanDetails(address borrower) constant returns(LoanState, uint, uint, uint, uint) {
-        uint loanLength = loanMap[borrower].length;
-        Loan obj = loanList[loanMap[borrower][loanLength -1]];
-        return (obj.state, obj.dueDate, obj.amount, obj.proposalCount, obj.collected);
-    }
-
-    function getProposalDetailsByLoanIdPosition(uint loanId, uint numI) constant returns(ProposalState, uint, uint, uint, address) {
-        Proposal obj = proposalList[loanList[loanId].proposal[numI]];
-        return (obj.state, obj.rate, obj.amount, loanList[loanId].proposal[numI],obj.lender);
-    }
-
-    function numTotalLoans() constant returns(uint) {
-        return loanList.length;
-    }
-    
 }
